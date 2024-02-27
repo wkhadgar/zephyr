@@ -1,5 +1,5 @@
-.. zephyr:code-sample:: adc
-   :name: Analog-to-Digital Converter (ADC)
+.. zephyr:code-sample:: adc_dt
+   :name: Analog-to-Digital Converter (ADC) with devicetree
    :relevant-api: adc_interface
 
    Read analog inputs from ADC channels.
