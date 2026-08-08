@@ -70,6 +70,7 @@ int mqtt_client_tls_connect(struct mqtt_client *client)
 				 &client->transport.proxy.addr,
 				 client->transport.proxy.addrlen);
 		if (ret < 0) {
+			NET_ERR("Failed to set SOCKS5 proxy (%d)", -errno);
 			goto error;
 		}
 	}
@@ -79,6 +80,7 @@ int mqtt_client_tls_connect(struct mqtt_client *client)
 			       &tls_config->peer_verify,
 			       sizeof(tls_config->peer_verify));
 	if (ret < 0) {
+		NET_ERR("Failed to set peer verify (%d)", -errno);
 		goto error;
 	}
 
@@ -87,6 +89,7 @@ int mqtt_client_tls_connect(struct mqtt_client *client)
 				       ZSOCK_TLS_CIPHERSUITE_LIST, tls_config->cipher_list,
 				       sizeof(int) * tls_config->cipher_count);
 		if (ret < 0) {
+			NET_ERR("Failed to set ciphersuite list (%d)", -errno);
 			goto error;
 		}
 	}
@@ -96,6 +99,7 @@ int mqtt_client_tls_connect(struct mqtt_client *client)
 				       ZSOCK_TLS_SEC_TAG_LIST, tls_config->sec_tag_list,
 				       sizeof(sec_tag_t) * tls_config->sec_tag_count);
 		if (ret < 0) {
+			NET_ERR("Failed to set sec tag list (%d)", -errno);
 			goto error;
 		}
 	}
@@ -107,6 +111,7 @@ int mqtt_client_tls_connect(struct mqtt_client *client)
 				ZSOCK_TLS_ALPN_LIST, tls_config->alpn_protocol_name_list,
 				sizeof(const char *) * tls_config->alpn_protocol_name_count);
 		if (ret < 0) {
+			NET_ERR("Failed to set ALPN list (%d)", -errno);
 			goto error;
 		}
 	}
@@ -118,6 +123,7 @@ int mqtt_client_tls_connect(struct mqtt_client *client)
 				       ZSOCK_TLS_HOSTNAME, tls_config->hostname,
 				       strlen(tls_config->hostname) + 1);
 		if (ret < 0) {
+			NET_ERR("Failed to set hostname (%d)", -errno);
 			goto error;
 		}
 	}
@@ -127,6 +133,7 @@ int mqtt_client_tls_connect(struct mqtt_client *client)
 				       ZSOCK_TLS_CERT_NOCOPY, &tls_config->cert_nocopy,
 				       sizeof(tls_config->cert_nocopy));
 		if (ret < 0) {
+			NET_ERR("Failed to set cert nocopy (%d)", -errno);
 			goto error;
 		}
 	}
@@ -140,6 +147,7 @@ int mqtt_client_tls_connect(struct mqtt_client *client)
 	ret = zsock_connect(client->transport.tls.sock, client->broker,
 			    peer_addr_size);
 	if (ret < 0) {
+		NET_ERR("Failed to connect TLS socket (%d)", -errno);
 		goto error;
 	}
 
