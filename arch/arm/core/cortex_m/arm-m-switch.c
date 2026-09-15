@@ -128,7 +128,7 @@ uint32_t arm_m_switch_stack_buffer = sizeof(struct z_frame_fpu) - sizeof(struct 
 uint32_t arm_m_switch_stack_buffer = sizeof(struct z_frame) - sizeof(struct hw_frame_base);
 #endif
 
-struct arm_m_cs_ptrs arm_m_cs_ptrs;
+struct arm_m_cs_ptrs arm_m_cs_ptrs[CONFIG_MP_MAX_NUM_CPUS];
 
 #ifdef CONFIG_LTO
 /* Toolchain workaround: when building with LTO, gcc seems unable to
@@ -146,8 +146,8 @@ void *arm_m_lto_refs[2];
 /* Unit test hook, unused in production */
 void *arm_m_last_switch_handle;
 
-/* Global holder for the location of the saved LR in the entry frame. */
-uint32_t *arm_m_exc_lr_ptr;
+/* Per-CPU holder for the location of the saved LR in that CPU's entry frame. */
+uint32_t *arm_m_exc_lr_ptr[CONFIG_MP_MAX_NUM_CPUS];
 
 /* Dummy used in arch_switch() when USERSPACE=y */
 uint32_t arm_m_switch_control;
@@ -354,9 +354,9 @@ static void *arm_m_switch_to_cpu(void *sp)
 	 * funny layout that puts r7 first!
 	 */
 	if (padded) {
-		arm_m_cs_ptrs.in = &f->synth_a.r7;
+		arm_m_cs()->in = &f->synth_a.r7;
 	} else {
-		arm_m_cs_ptrs.in = &f->z.u.hw.r7;
+		arm_m_cs()->in = &f->z.u.hw.r7;
 	}
 
 	return padded ? &f->synth_a.base.base : &f->z.u.hw.base;
@@ -434,7 +434,7 @@ static void *arm_m_cpu_to_switch(struct k_thread *th, void *sp, bool fpu)
 #endif
 
 	/* Mark the callee-saved pointer for the fixup assembly */
-	arm_m_cs_ptrs.out = &f->z.u.sw.r4;
+	arm_m_cs()->out = &f->z.u.sw.r4;
 
 #ifdef CONFIG_FPU
 	if (fpu) {
@@ -457,7 +457,7 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry, void *arg0, void *ar
 	uint32_t baddr;
 
 #ifdef CONFIG_LTO
-	arm_m_lto_refs[0] = &arm_m_cs_ptrs;
+	arm_m_lto_refs[0] = arm_m_cs_ptrs;
 	arm_m_lto_refs[1] = arm_m_must_switch;
 #endif
 
@@ -467,11 +467,7 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry, void *arg0, void *ar
 	 * variables for use by arm_m_exc_tail().  Should move to arch
 	 * init somewhere once arch_switch is better integrated
 	 */
-	char *stack = (char *)K_KERNEL_STACK_BUFFER(z_interrupt_stacks[0]);
-	uint32_t *s_top = (uint32_t *)(stack + K_KERNEL_STACK_SIZEOF(z_interrupt_stacks[0]));
-
-	arm_m_exc_lr_ptr = &s_top[-1];
-	arm_m_cs_ptrs.lr_fixup = (void *)(1 | (uint32_t)arm_m_exc_exit); /* thumb bit! */
+	arm_m_percpu_init(0);
 #endif
 
 	baddr = ((uint32_t)base + 7) & ~7;
@@ -507,8 +503,29 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry, void *arg0, void *ar
 
 bool arm_m_do_switch(struct k_thread *last_thread, void *next);
 
-bool arm_m_must_switch(void)
+/*
+ * Sets up the per-CPU switch state for one CPU: where its entry frame keeps
+ * the saved LR, which is inside that CPU's own interrupt stack, and the fixup
+ * address. Must run on, or on behalf of, each CPU before it takes an
+ * interrupt.
+ */
+void arm_m_percpu_init(unsigned int cpu)
 {
+#ifdef CONFIG_MULTITHREADING
+	char *stack = (char *)K_KERNEL_STACK_BUFFER(z_interrupt_stacks[cpu]);
+	uint32_t *s_top = (uint32_t *)(stack + K_KERNEL_STACK_SIZEOF(z_interrupt_stacks[cpu]));
+
+	arm_m_exc_lr_ptr[cpu] = &s_top[-1];
+	arm_m_cs_ptrs[cpu].lr_fixup = (void *)(1 | (uint32_t)arm_m_exc_exit); /* thumb bit! */
+#endif
+}
+
+struct arm_m_cs_ptrs *arm_m_must_switch(void)
+{
+	struct arm_m_cs_ptrs *cs = arm_m_cs();
+
+	cs->switching = 0;
+
 	/* This lock is held until the end of the context switch, at
 	 * which point it will be dropped unconditionally. Save a few
 	 * cycles by skipping the needless bits of arch_irq_lock().
@@ -523,25 +540,27 @@ bool arm_m_must_switch(void)
 	 * and returning to thread mode.
 	 */
 	if ((IS_ENABLED(CONFIG_ARM_SECURE_FIRMWARE) || IS_ENABLED(CONFIG_ARM_NONSECURE_FIRMWARE)) &&
-	    !is_thread_return((uint32_t)arm_m_cs_ptrs.lr_save)) {
-		return false;
+	    !is_thread_return((uint32_t)cs->lr_save)) {
+		return cs;
 	}
 
 	struct k_thread *last_thread = _current;
 	void *next = z_sched_next_handle(last_thread);
 
 	if (next == NULL) {
-		return false;
+		return cs;
 	}
 
 	arm_m_do_switch(last_thread, next);
-	return true;
+	cs->switching = 1;
+
+	return cs;
 }
 
 bool arm_m_do_switch(struct k_thread *last_thread, void *next)
 {
 	void *last;
-	bool fpu = fpu_state_pushed((uint32_t)arm_m_cs_ptrs.lr_save);
+	bool fpu = fpu_state_pushed((uint32_t)arm_m_cs()->lr_save);
 
 	last = (void *)__get_PSP();
 
@@ -623,12 +642,19 @@ void arm_m_legacy_exit(void)
  * handled in software already.
  */
 #ifdef CONFIG_MULTITHREADING
+/* arm_m_exc_exit() reaches these fields by literal offset. */
+BUILD_ASSERT(offsetof(struct arm_m_cs_ptrs, out) == 0);
+BUILD_ASSERT(offsetof(struct arm_m_cs_ptrs, in) == 4);
+BUILD_ASSERT(offsetof(struct arm_m_cs_ptrs, lr_save) == 8);
+BUILD_ASSERT(offsetof(struct arm_m_cs_ptrs, switching) == 16);
+
 __attribute__((naked)) void arm_m_exc_exit(void)
 {
-	__asm__("  bl arm_m_must_switch;"
-		"  ldr r2, =arm_m_cs_ptrs;"
+	__asm__("  bl arm_m_must_switch;" /* returns this CPU's arm_m_cs_ptrs */
+		"  mov r2, r0;"
 		"  mov r3, #0;"
-		"  ldr lr, [r2, #8];" /* lr_save */
+		"  ldr lr, [r2, #8];"  /* lr_save */
+		"  ldr r0, [r2, #16];" /* switching */
 		"  cbz r0, 1f;"
 		"  mov lr, #0xfffffffd;" /* integer-only LR */
 		"  ldm r2, {r0, r1};"    /* fields: out, in */
