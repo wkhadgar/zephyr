@@ -16,6 +16,10 @@ if(CONFIG_PM_S2RAM)
   zephyr_library_include_directories(${ZEPHYR_BASE}/arch/arm/include)
 endif()
 
+# Multicore: the CPU identifier the Cortex-M arch layer needs, and starting
+# the second core through the bootrom FIFO handshake.
+zephyr_library_sources_ifdef(CONFIG_SMP smp.c)
+
 zephyr_include_directories(.)
 
 # Add the image definition block if required

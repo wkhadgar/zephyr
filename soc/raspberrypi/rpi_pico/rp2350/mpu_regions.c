@@ -23,9 +23,19 @@ static const struct arm_mpu_region mpu_regions[] = {
 			 REGION_FLASH_ATTR(CONFIG_FLASH_BASE_ADDRESS, KB(CONFIG_FLASH_SIZE))),
 #endif
 
-	/* Main SRAM. */
+#if defined(CONFIG_SMP)
+	/*
+	 * Main SRAM. Shareable under SMP: the kernel's spinlocks rest on
+	 * ldrex and strex, which are only globally atomic for Shareable
+	 * memory, so a non-shareable mapping leaves the two cores resolving
+	 * exclusives against their own local monitors and excluding nothing.
+	 */
+	MPU_REGION_ENTRY("SRAM_0", DT_CHOSEN_SRAM_ADDR,
+			 REGION_RAM_SHAREABLE_ATTR(DT_CHOSEN_SRAM_ADDR, DT_CHOSEN_SRAM_SIZE)),
+#else
 	MPU_REGION_ENTRY("SRAM_0", DT_CHOSEN_SRAM_ADDR,
 			 REGION_RAM_ATTR(DT_CHOSEN_SRAM_ADDR, DT_CHOSEN_SRAM_SIZE)),
+#endif
 };
 
 const struct arm_mpu_config mpu_config = {

@@ -21,6 +21,7 @@ config SOC_RP2350A_HAZARD3
 	select RISCV
 
 config SOC_RP2350A_M33
+	select SCHED_IPI_SUPPORTED if SMP
 	select ARM
 	select ARM_TRUSTZONE_M
 	select CPU_CORTEX_M_HAS_SYSTICK
@@ -38,6 +39,7 @@ config SOC_RP2350B_HAZARD3
 	select RISCV
 
 config SOC_RP2350B_M33
+	select SCHED_IPI_SUPPORTED if SMP
 	select ARM
 	select ARM_TRUSTZONE_M
 	select CPU_CORTEX_M_HAS_SYSTICK
