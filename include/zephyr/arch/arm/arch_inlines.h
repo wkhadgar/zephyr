@@ -24,6 +24,19 @@ static ALWAYS_INLINE _cpu_t *arch_curr_cpu(void)
 	/* Dummy implementation always return the first cpu */
 	return &_kernel.cpus[0];
 }
+#else
+/*
+ * Cortex-M has no architectural per-CPU register, so unlike Cortex-A and R,
+ * which read TPIDRURO, the SoC has to supply the identifier. Multicore
+ * Cortex-M SoCs generally expose one cheaply; on RP2350 it is a single-cycle
+ * read of the SIO CPUID register.
+ */
+uint32_t z_soc_cpu_id(void);
+
+static ALWAYS_INLINE _cpu_t *arch_curr_cpu(void)
+{
+	return &_kernel.cpus[z_soc_cpu_id()];
+}
 #endif
 #endif
 
