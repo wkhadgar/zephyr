@@ -253,6 +253,23 @@
 		IF_ENABLED(CONFIG_ARM_MPU_PXN, (.pxn = !PRIV_EXEC_NEVER,))			   \
 	}
 
+/*
+ * As above, but Inner Shareable.
+ *
+ * Needed by any SMP configuration: ldrex and strex are only globally atomic
+ * for Shareable memory, so with a non-shareable mapping each core's exclusive
+ * is resolved by its own local monitor and both succeed. atomic_cas() then
+ * fails to exclude, and with it k_spinlock and the scheduler state it guards,
+ * silently and at full speed.
+ */
+#define REGION_RAM_SHAREABLE_ATTR(base, size)                                                      \
+	{                                                                                          \
+		.rbar = IF_ENABLED(CONFIG_XIP, (NOT_EXEC |)) P_RW_U_NA_Msk |                       \
+			INNER_SHAREABLE_Msk,              /* AP, XN, SH */                         \
+		.mair_idx = MPU_MAIR_INDEX_SRAM,          /* Cache-ability */                      \
+		.r_limit = REGION_LIMIT_ADDR(base, size), /* Region Limit */                       \
+	}
+
 #define REGION_RAM_WT_ATTR(base, size)                                                            \
 	{                                                                                          \
 		.rbar = IF_ENABLED(CONFIG_XIP, (NOT_EXEC |)) P_RW_U_NA_Msk |                       \
