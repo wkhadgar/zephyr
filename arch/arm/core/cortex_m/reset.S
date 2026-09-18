@@ -20,6 +20,10 @@
 _ASM_FILE_PROLOGUE
 
 GTEXT(z_arm_reset)
+#if CONFIG_MP_MAX_NUM_CPUS > 1
+GTEXT(z_arm_secondary_reset)
+GTEXT(arch_secondary_cpu_init)
+#endif
 GTEXT(arch_early_memset)
 GDATA(z_interrupt_stacks)
 GDATA(z_main_stack)
@@ -213,6 +217,13 @@ SECTION_SUBSEC_FUNC(TEXT,_reset_section,__start)
     ldr r0, =z_interrupt_stacks
     ldr r1, =CONFIG_ISR_STACK_SIZE + MPU_GUARD_ALIGN_AND_SIZE
     adds r0, r0, r1
+    ldr r2, =z_prep_c
+
+/*
+ * Common tail: r0 holds the stack this CPU boots on and r2 the C entry point
+ * to reach once it is running on PSP.
+ */
+_boot_on_psp:
     msr PSP, r0
     mrs r0, CONTROL
     movs r1, #(2 | CONTROL_ARM_PAC_MASK | CONTROL_ARM_BTI_MASK)
@@ -226,8 +237,28 @@ SECTION_SUBSEC_FUNC(TEXT,_reset_section,__start)
     isb
 
     /*
-     * 'bl' jumps the furthest of the branch instructions that are
-     * supported on all platforms. So it is used when jumping to z_prep_c
-     * (even though we do not intend to return).
+     * r2 was loaded with an absolute address, so this reaches the entry
+     * point whatever the layout (even though we do not intend to return).
      */
-    bl z_prep_c
+    bx r2
+
+#if CONFIG_MP_MAX_NUM_CPUS > 1
+/*
+ * Secondary CPU entry, the counterpart of _secondary_core on Cortex-A/R.
+ *
+ * A secondary is launched by the SoC rather than by reset, and arrives with
+ * MSP already at the top of its own interrupt stack, so unlike the primary it
+ * has no stack to compute. What it does share is the move to PSP: while thread
+ * mode runs on MSP, arm_m_switch() installs incoming thread stacks into MSP
+ * instead of PSP, and the interrupt tail never recognises a thread to switch
+ * away from, so the CPU can never be preempted into one.
+ *
+ * This has to happen before any C frame exists. Relocating SP under a live
+ * frame discards it, and such a frame would sit above the new stack pointer,
+ * exactly where the first exception pushes.
+ */
+SECTION_SUBSEC_FUNC(TEXT,_reset_section,z_arm_secondary_reset)
+    mrs r0, MSP
+    ldr r2, =arch_secondary_cpu_init
+    b _boot_on_psp
+#endif /* CONFIG_MP_MAX_NUM_CPUS > 1 */

@@ -21,6 +21,7 @@
  */
 
 #include <zephyr/kernel.h>
+#include <zephyr/sys/printk.h>
 #include <zephyr/kernel/thread_stack.h>
 #include <zephyr/platform/hooks.h>
 #include <zephyr/sys/barrier.h>
@@ -71,6 +72,9 @@ unsigned int soc_sched_ipi_irq(void);
 /**
  * @brief Tell the scheduler an IPI arrived. Called by the SoC's IPI handler.
  */
+/** @brief Secondary CPU entry in reset.S; moves this core onto PSP. */
+void z_arm_secondary_reset(void);
+
 void z_arm_cortex_m_sched_ipi(void)
 {
 	z_sched_ipi();
@@ -112,6 +116,7 @@ static void secondary_core_init(void)
 	z_arm_cpu_idle_init();
 	z_arm_clear_faults();
 
+
 #if defined(CONFIG_ARM_MPU)
 	/*
 	 * The MPU is per core, so the primary's configuration does not apply
@@ -141,7 +146,12 @@ static void secondary_core_init(void)
  * Runs on the secondary with the stack the kernel allocated for it, in Thread
  * mode on MSP, before any thread exists on this CPU.
  */
-void z_arm_cortex_m_secondary_start(void)
+/*
+ * Entered from z_arm_secondary_reset in reset.S, already running on PSP with
+ * MSP left as this CPU's interrupt stack. Named as the other architectures
+ * name theirs; riscv, arc, arm64 and Cortex-A/R all reach C here.
+ */
+void arch_secondary_cpu_init(void)
 {
 	arch_cpustart_t fn = cpu_start.fn;
 	void *arg = cpu_start.arg;
@@ -182,7 +192,7 @@ void arch_cpu_start(int cpu_num, k_thread_stack_t *stack, int sz, arch_cpustart_
 	/* The secondary reads these as soon as it starts. */
 	barrier_dsync_fence_full();
 
-	ret = soc_start_secondary_cpu(cpu_num, z_arm_cortex_m_secondary_start,
+	ret = soc_start_secondary_cpu(cpu_num, z_arm_secondary_reset,
 				      K_KERNEL_STACK_BUFFER(stack) + sz, SCB->VTOR);
 	if (ret != 0) {
 		printk("CPU %d failed to start: %d\n", cpu_num, ret);
