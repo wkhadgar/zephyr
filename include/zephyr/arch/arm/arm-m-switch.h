@@ -341,6 +341,12 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 			  * interruptible code (running in the incoming thread) once
 			  * the stack is valid.
 			  */
+#if defined(CONFIG_SMP)
+			 /* The pushes above have to be visible to another CPU
+			  * before the handle that advertises them.
+			  */
+			 "dmb;"
+#endif
 			 "str sp, [r5];"
 			 "mov sp, r4;"
 			 "msr basepri, r0;"
