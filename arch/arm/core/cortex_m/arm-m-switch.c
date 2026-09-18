@@ -130,6 +130,7 @@ uint32_t arm_m_switch_stack_buffer = sizeof(struct z_frame) - sizeof(struct hw_f
 
 struct arm_m_cs_ptrs arm_m_cs_ptrs[CONFIG_MP_MAX_NUM_CPUS];
 
+
 #ifdef CONFIG_LTO
 /* Toolchain workaround: when building with LTO, gcc seems unable to
  * notice the external references in the assembly for arm_m_exc_exit
@@ -610,6 +611,13 @@ bool arm_m_do_switch(struct k_thread *last_thread, void *next)
 #if !defined(CONFIG_MULTITHREADING)
 	arm_m_last_switch_handle = last;
 #elif defined(CONFIG_USE_SWITCH)
+	/*
+	 * Not published here. The callee-saved registers are still in the CPU
+	 * at this point and only reach the outgoing frame in arm_m_exc_exit,
+	 * so a second CPU that saw the handle now could resume the thread
+	 * before its r4-r11 were stored. Hand the store to the assembly, which
+	 * does it after the spill.
+	 */
 	last_thread->switch_handle = last;
 #endif
 
