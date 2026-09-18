@@ -116,6 +116,15 @@ static void secondary_core_init(void)
 	z_arm_cpu_idle_init();
 	z_arm_clear_faults();
 
+#if defined(CONFIG_CPU_HAS_FPU)
+	/*
+	 * CPACR and FPCCR are per core, and z_prep_c() only reaches the
+	 * primary's. The switch itself issues floating point instructions, so
+	 * without this the first one here faults for a disabled coprocessor.
+	 */
+	z_arm_floating_point_init();
+#endif
+
 
 #if defined(CONFIG_ARM_MPU)
 	/*
