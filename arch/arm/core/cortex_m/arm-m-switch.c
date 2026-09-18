@@ -546,7 +546,19 @@ struct arm_m_cs_ptrs *arm_m_must_switch(void)
 	}
 
 	struct k_thread *last_thread = _current;
-	void *next = z_sched_next_handle(last_thread);
+	void *next;
+
+	/*
+	 * z_sched_next_handle() changes _current, and under CONFIG_SMP it
+	 * ignores its argument, so nothing stops the compiler reading _current
+	 * after the call and handing us the incoming thread instead of the
+	 * outgoing one. The outgoing thread's handle would then never be
+	 * published, deadlocking whoever waits for it. Pin the value to a
+	 * register here so it is read before the call.
+	 */
+	__asm__ volatile("" : "+r"(last_thread));
+
+	next = z_sched_next_handle(last_thread);
 
 	if (next == NULL) {
 		return cs;
