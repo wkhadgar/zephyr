@@ -31,6 +31,9 @@ extern "C" {
 #include <zephyr/arch/arm/arm-m-switch.h>
 
 extern void z_arm_fault_init(void);
+#if defined(CONFIG_CPU_HAS_FPU)
+extern void z_arm_floating_point_init(void);
+#endif
 extern void z_arm_cpu_idle_init(void);
 #ifdef CONFIG_ARM_MPU
 extern void z_arm_configure_static_mpu_regions(void);
