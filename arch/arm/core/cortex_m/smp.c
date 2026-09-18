@@ -135,7 +135,14 @@ static void secondary_core_init(void)
 	 * The NVIC is per core, so each CPU has to enable the IPI itself. The
 	 * handler is already in the shared vector and software ISR tables,
 	 * connected once on the primary in arch_smp_init().
+	 *
+	 * The priority register is per core as well, and matters as much as
+	 * the enable. Left at its reset value of zero the IPI sits at the
+	 * level reserved for faults and zero-latency interrupts, which BASEPRI
+	 * does not mask, so it would arrive while this CPU was still coming up
+	 * and had no current thread to switch away from.
 	 */
+	soc_sched_ipi_connect();
 	irq_enable(soc_sched_ipi_irq());
 #endif
 }
